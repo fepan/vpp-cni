@@ -19,7 +19,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"net"
+	//"net"
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
@@ -43,8 +43,8 @@ type PluginConf struct {
 	// chained.
 	// If you need to modify the result before returning it, you will need
 	// to actually convert it to a concrete versioned struct.
-	RawPrevResult *map[string]interface{} `json:"prevResult"`
-	PrevResult    *current.Result         `json:"-"`
+	// RawPrevResult *map[string]interface{} `json:"prevResult"`
+	// PrevResult    *current.Result         `json:"-"`
 
 	// Add plugin-specifc flags here
 	MyAwesomeFlag     bool   `json:"myAwesomeFlag"`
@@ -60,21 +60,21 @@ func parseConfig(stdin []byte) (*PluginConf, error) {
 	}
 
 	// Parse previous result. Remove this if your plugin is not chained.
-	if conf.RawPrevResult != nil {
-		resultBytes, err := json.Marshal(conf.RawPrevResult)
-		if err != nil {
-			return nil, fmt.Errorf("could not serialize prevResult: %v", err)
-		}
-		res, err := version.NewResult(conf.CNIVersion, resultBytes)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse prevResult: %v", err)
-		}
-		conf.RawPrevResult = nil
-		conf.PrevResult, err = current.NewResultFromResult(res)
-		if err != nil {
-			return nil, fmt.Errorf("could not convert result to current version: %v", err)
-		}
-	}
+	// if conf.RawPrevResult != nil {
+	//	resultBytes, err := json.Marshal(conf.RawPrevResult)
+	//	if err != nil {
+	//		return nil, fmt.Errorf("could not serialize prevResult: %v", err)
+	//	}
+	//	res, err := version.NewResult(conf.CNIVersion, resultBytes)
+	//	if err != nil {
+	//		return nil, fmt.Errorf("could not parse prevResult: %v", err)
+	//	}
+	//	conf.RawPrevResult = nil
+	//	conf.PrevResult, err = current.NewResultFromResult(res)
+	//	if err != nil {
+	//		return nil, fmt.Errorf("could not convert result to current version: %v", err)
+	//	}
+	//}
 	// End previous result parsing
 
 	// Do any validation here
@@ -88,43 +88,78 @@ func parseConfig(stdin []byte) (*PluginConf, error) {
 // cmdAdd is called for ADD requests
 func cmdAdd(args *skel.CmdArgs) error {
 	conf, err := parseConfig(args.StdinData)
-	if err != nil {
+	fmt.Printf("cmdAdd has been called\n")
+        if err != nil {
 		return err
 	}
 
-	if conf.PrevResult == nil {
-		return fmt.Errorf("must be called as chained plugin")
-	}
+	//if conf.PrevResult == nil {
+	//	return fmt.Errorf("must be called as chained plugin")
+	//}
 
 	// This is some sample code to generate the list of container-side IPs.
 	// We're casting the prevResult to a 0.3.0 response, which can also include
 	// host-side IPs (but doesn't when converted from a 0.2.0 response).
-	containerIPs := make([]net.IP, 0, len(conf.PrevResult.IPs))
-	if conf.CNIVersion != "0.3.0" {
-		for _, ip := range conf.PrevResult.IPs {
-			containerIPs = append(containerIPs, ip.Address.IP)
-		}
-	} else {
-		for _, ip := range conf.PrevResult.IPs {
-			if ip.Interface == nil {
-				continue
-			}
-			intIdx := *ip.Interface
+	//containerIPs := make([]net.IP, 0, len(conf.PrevResult.IPs))
+	//if conf.CNIVersion != "0.3.0" {
+	//	for _, ip := range conf.PrevResult.IPs {
+	//		containerIPs = append(containerIPs, ip.Address.IP)
+	//	}
+	//} else {
+	//	for _, ip := range conf.PrevResult.IPs {
+	//		if ip.Interface == nil {
+	//			continue
+	//		}
+	//		intIdx := *ip.Interface
 			// Every IP is indexed in to the interfaces array, with "-1" standing
 			// for an unknown interface (which we'll assume to be Container-side
 			// Skip all IPs we know belong to an interface with the wrong name.
-			if intIdx >= 0 && intIdx < len(conf.PrevResult.Interfaces) && conf.PrevResult.Interfaces[intIdx].Name != args.IfName {
-				continue
-			}
-			containerIPs = append(containerIPs, ip.Address.IP)
-		}
-	}
-	if len(containerIPs) == 0 {
-		return fmt.Errorf("got no container IPs")
-	}
+	//		if intIdx >= 0 && intIdx < len(conf.PrevResult.Interfaces) && conf.PrevResult.Interfaces[intIdx].Name != args.IfName {
+	//			continue
+	//		}
+	//		containerIPs = append(containerIPs, ip.Address.IP)
+	//	}
+	//}
+	//if len(containerIPs) == 0 {
+	//	return fmt.Errorf("got no container IPs")
+	//}
 
 	// Pass through the result for the next plugin
-	return types.PrintResult(conf.PrevResult, conf.CNIVersion)
+	//return types.PrintResult(conf.PrevResult, conf.CNIVersion)
+	pass_json_result := `{
+                                 "ip4": {
+        "ip": "10.15.20.2/24",
+        "gateway": "10.15.20.1",
+        "routes": [
+            {
+                "dst": "0.0.0.0/0"
+            },
+            {
+                "dst": "1.1.1.1/32",
+                "gw": "10.15.20.1"
+            }
+        ]
+    },
+    "dns": {}
+			     }`
+       rawIn := json.RawMessage(pass_json_result)
+       resultBytes, err := rawIn.MarshalJSON()
+       fmt.Println(string(resultBytes))
+       if err != nil {
+	 fmt.Printf("Cannot convert JSON to Bytes") 
+         return err
+       }
+       res, err := version.NewResult(conf.CNIVersion, resultBytes)
+       if err != nil {
+	    fmt.Printf("Cannot create NewResult")
+	    return err	
+       }
+       result, err := current.NewResultFromResult(res)
+       if err != nil {
+	   fmt.Printf("Cannot create NewResult from Result")
+           return err
+       } 
+       return types.PrintResult(result, conf.CNIVersion)
 }
 
 // cmdDel is called for DELETE requests
